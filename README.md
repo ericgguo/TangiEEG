@@ -93,7 +93,16 @@ TangiEEG/
 │   └── output_manager.py          # 输出管理器
 │       # 管理文本输出到界面或其他目标
 │
-├── visualization/                 # 可视化模块
+├── ui/                            # 用户界面模块
+│   ├── __init__.py
+│   ├── app.py                     # Streamlit应用程序主入口
+│   ├── dashboard.py               # 仪表盘界面组件
+│   ├── device_panel.py            # 设备连接和配置面板
+│   ├── processing_panel.py        # 信号处理配置面板
+│   ├── visualization_panel.py     # 信号可视化面板
+│   └── session_manager.py         # 会话管理组件
+│
+├── visualization/                 # 数据可视化模块
 │   ├── __init__.py
 │   ├── signal_viewer.py           # 信号可视化
 │   │   # 实时显示原始和处理后的EEG信号
@@ -104,8 +113,8 @@ TangiEEG/
 │   ├── decoding_visualizer.py     # 解码过程可视化
 │   │   # 可视化解码模型的中间结果
 │   │
-│   └── text_display.py            # 文本显示界面
-│       # 简单的文本输出面板，显示最终生成的文本
+│   └── brain_mapping.py           # 脑图可视化
+│       # 在3D头部模型上展示脑电活动
 │
 ├── utils/                         # 工具函数模块
 │   ├── __init__.py
