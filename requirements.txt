@@ -9,7 +9,7 @@ h5py>=3.6.0
 scikit-learn>=1.0.0
 statsmodels>=0.13.0
 pyriemann>=0.5
-antropy>=0.2.0
+antropy>=0.1.9
 
 # 深度学习
 torch>=1.10.0
@@ -21,6 +21,15 @@ matplotlib>=3.5.0
 seaborn>=0.11.0
 plotly>=5.0.0
 streamlit>=1.8.0
+altair>=4.2.0
+streamlit_extras>=0.2.0
+st-annotated-text>=3.0.0
+
+# 用户界面
+hydralit_components>=1.0.0
+streamlit-option-menu>=0.3.0
+streamlit_autorefresh>=0.0.1
+streamlit-lottie>=0.0.3
 
 # 文本生成与处理
 transformers>=4.18.0

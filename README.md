@@ -136,7 +136,7 @@ TangiEEG/
 
 ### 环境要求
 - Python 3.8+
-- OpenBCI Cyton 硬件或兼容设备
+- OpenBCI Cyton 或 Cyton+Daisy (16通道) 硬件
 
 ### 安装依赖
 
@@ -146,9 +146,46 @@ pip install -r requirements.txt
 
 ### 运行系统
 
+TangiEEG提供两种运行方式：
+
+#### 1. 命令行模式
+
+命令行模式适合进行脚本化处理和自动化任务：
+
 ```bash
+# 基本运行
 python main.py
+
+# 带参数运行
+python main.py --config path/to/config.yaml --mode online_decoding --debug
 ```
+
+主要参数:
+- `--config`: 配置文件路径
+- `--mode`: 运行模式 (offline_analysis, online_recording, online_decoding, simulation)
+- `--debug`: 启用调试模式
+- `--simulate`: 使用模拟数据而不是真实设备
+- `--record`: 记录会话数据到文件
+
+#### 2. 图形界面模式
+
+图形界面模式提供了直观的可视化和交互功能：
+
+```bash
+# 启动Web界面
+streamlit run ui/app.py
+```
+
+启动后，会自动打开浏览器访问本地Web界面(默认为http://localhost:8501)。
+
+图形界面提供以下功能：
+- 设备连接和配置
+- 实时信号可视化
+- 通道设置和阻抗检查
+- 信号处理参数调整
+- 解码结果显示和导出
+
+要使用16通道配置，请在界面中选择"Daisy"设备类型。
 
 ## 许可证
 

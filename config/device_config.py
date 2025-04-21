@@ -5,7 +5,7 @@
 # OpenBCI设备基本配置
 OPENBCI_CONFIG = {
     # 基本设备参数
-    'board_type': 'cyton',  # 'cyton'或'ganglion'
+    'board_type': 'cyton_daisy',  # 'cyton'、'cyton_daisy'或'ganglion'
     'serial_port': None,    # 自动检测，或指定如'/dev/ttyUSB0'或'COM3'
     'mac_address': None,    # 蓝牙设备地址（仅Ganglion）
     'serial_timeout': 5,    # 串口连接超时时间(秒)
@@ -15,8 +15,8 @@ OPENBCI_CONFIG = {
     'streaming_package_size': 100,  # 每次数据包大小（样本数）
     
     # 通道配置
-    'channels': [1, 2, 3, 4, 5, 6, 7, 8],  # 使用的通道号列表
-    'channel_names': ['Fp1', 'Fp2', 'F7', 'F8', 'T3', 'T4', 'O1', 'O2'],  # 通道名称
+    'channels': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],  # 使用的通道号列表
+    'channel_names': ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'T3', 'C3', 'Cz', 'C4', 'T4', 'P3', 'Pz', 'P4', 'O1'],  # 通道名称
     'gain': 24,             # 24 = x24 增益值，影响信号量程
     
     # 滤波器设置（硬件级别）
@@ -56,7 +56,7 @@ DATA_SAVE_CONFIG = {
 # EOG眼电图采集设置
 EOG_CONFIG = {
     'enabled': True,          # 是否采集EOG信号
-    'channels': [1, 2],       # EOG通道编号
+    'channels': [15, 16],     # EOG通道编号，使用最后两个通道
     'positions': ['HEOG', 'VEOG'],  # 水平和垂直EOG
     'sample_rate': 250        # EOG采样率
 }
