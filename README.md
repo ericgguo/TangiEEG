@@ -113,8 +113,8 @@ TangiEEG/
 │   ├── decoding_visualizer.py     # 解码过程可视化
 │   │   # 可视化解码模型的中间结果
 │   │
-│   └── brain_mapping.py           # 脑图可视化
-│       # 在3D头部模型上展示脑电活动
+│   └── text_display.py           # 文本显示
+│       # 生成文本输出面板
 │
 ├── utils/                         # 工具函数模块
 │   ├── __init__.py
