@@ -70,7 +70,7 @@ def render_no_data_warning():
         st.session_state.upload_file_name = uploaded_file.name
         
         # 重新加载页面以显示数据处理界面
-        st.experimental_rerun()
+        st.rerun()
 
 def render_control_buttons():
     """渲染顶部控制按钮"""
@@ -91,11 +91,11 @@ def render_control_buttons():
         if not st.session_state.processing_active:
             if st.button("开始处理", type="primary", use_container_width=True):
                 st.session_state.processing_active = True
-                st.experimental_rerun()
+                st.rerun()
         else:
             if st.button("停止处理", use_container_width=True):
                 st.session_state.processing_active = False
-                st.experimental_rerun()
+                st.rerun()
     
     with col2:
         if st.button("保存设置", use_container_width=True):

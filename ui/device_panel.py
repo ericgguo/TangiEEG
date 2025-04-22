@@ -87,14 +87,14 @@ def render_connection_settings():
             with st.spinner("正在连接设备..."):
                 time.sleep(2)  # 模拟连接延迟
                 st.session_state.device_connected = True
-                st.experimental_rerun()
+                st.rerun()
     else:
         if st.button("断开设备", key="disconnect_button", use_container_width=True):
             # 模拟断开过程
             with st.spinner("正在断开设备..."):
                 time.sleep(1)  # 模拟断开延迟
                 st.session_state.device_connected = False
-                st.experimental_rerun()
+                st.rerun()
     
     # 设备连接状态指示
     if st.session_state.device_connected:
