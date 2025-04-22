@@ -91,9 +91,14 @@ def render_realtime_visualization():
     col1, col2, col3 = st.columns(3)
     
     with col1:
+        # 获取真实的通道数
+        num_channels = 8
+        if 'device_manager' in st.session_state:
+            num_channels = st.session_state.device_manager.channels
+        
         selected_channels = st.multiselect(
             "显示通道",
-            options=["全部"] + [f"通道 {i+1}" for i in range(8)],
+            options=["全部"] + [f"通道 {i+1}" for i in range(num_channels)],
             default=["全部"]
         )
     
@@ -118,37 +123,68 @@ def render_realtime_visualization():
     # 实时信号显示
     st.markdown("#### 原始信号")
     
-    # 生成模拟数据
-    num_channels = 8
-    num_samples = 1000
-    sample_rate = 250  # Hz
-    time_points = np.linspace(0, num_samples / sample_rate, num_samples)
-    
-    # 创建一个多通道图
-    fig = go.Figure()
-    
-    # 为每个通道生成数据并添加到图中
-    for i in range(num_channels):
-        if "全部" in selected_channels or f"通道 {i+1}" in selected_channels:
+    # 获取真实的模拟数据
+    if 'device_manager' in st.session_state and st.session_state.device_connected:
+        device_manager = st.session_state.device_manager
+        sample_rate = device_manager.sample_rate
+        num_samples = int(time_window * sample_rate)
+        eeg_data = device_manager.get_latest_data(samples=num_samples)
+        
+        if eeg_data is None or eeg_data.size == 0:
+            st.warning("无法获取数据，显示模拟数据")
+            # 回退到模拟数据
+            num_channels = 8 if 'device_manager' not in st.session_state else device_manager.channels
+            num_samples = 1000
+            sample_rate = 250
+            time_points = np.linspace(0, num_samples / sample_rate, num_samples)
+            eeg_data = np.zeros((num_channels, num_samples))
+            
+            for i in range(num_channels):
+                # 生成基础信号
+                signal = np.sin(2 * np.pi * (i + 1) * time_points) * 10
+                # 添加随机噪声
+                signal += np.random.normal(0, 1, num_samples)
+                # 添加时变振幅
+                envelope = 1 + 0.5 * np.sin(2 * np.pi * 0.2 * time_points)
+                signal *= envelope
+                
+                eeg_data[i, :] = signal
+        else:
+            # 如果获取到的数据不足，做一些处理
+            if eeg_data.shape[1] < num_samples:
+                # 填充不足的部分
+                padding = np.zeros((eeg_data.shape[0], num_samples - eeg_data.shape[1]))
+                eeg_data = np.hstack((padding, eeg_data))
+                
+            time_points = np.linspace(0, num_samples / sample_rate, num_samples)
+    else:
+        # 如果设备未连接，显示模拟数据
+        num_channels = 8
+        num_samples = 1000
+        sample_rate = 250  # Hz
+        time_points = np.linspace(0, num_samples / sample_rate, num_samples)
+        
+        eeg_data = np.zeros((num_channels, num_samples))
+        
+        for i in range(num_channels):
             # 生成基础信号
             signal = np.sin(2 * np.pi * (i + 1) * time_points) * 10
-            
             # 添加随机噪声
             signal += np.random.normal(0, 1, num_samples)
-            
             # 添加时变振幅
             envelope = 1 + 0.5 * np.sin(2 * np.pi * 0.2 * time_points)
             signal *= envelope
             
-            # 添加一些突发活动
-            burst_idx = np.random.randint(100, 900)
-            burst_width = 50
-            for j in range(max(0, burst_idx - burst_width), min(num_samples, burst_idx + burst_width)):
-                dist = abs(j - burst_idx) / burst_width
-                signal[j] += 15 * np.exp(-dist ** 2)
-            
+            eeg_data[i, :] = signal
+    
+    # 创建一个多通道图
+    fig = go.Figure()
+    
+    # 为每个通道添加数据
+    for i in range(min(num_channels, eeg_data.shape[0])):
+        if "全部" in selected_channels or f"通道 {i+1}" in selected_channels:
             # 应用缩放
-            signal = signal * scale
+            signal = eeg_data[i, :] * scale
             
             # 应用偏移以便于可视化
             offset = i * 30
@@ -190,20 +226,58 @@ def render_realtime_visualization():
     st.markdown("#### 信号质量指标")
     quality_metrics = st.columns(5)
     
-    with quality_metrics[0]:
-        st.metric("信噪比", "24.5 dB", delta="1.2 dB")
-    
-    with quality_metrics[1]:
-        st.metric("抗干扰值", "86%", delta="3%")
-    
-    with quality_metrics[2]:
-        st.metric("最大振幅", f"{37.2*scale:.1f} μV", delta=None)
-    
-    with quality_metrics[3]:
-        st.metric("采样率", "250 Hz", delta=None)
-    
-    with quality_metrics[4]:
-        st.metric("阻抗平均值", "12.7 kΩ", delta="-2.1 kΩ")
+    # 计算真实的信号质量指标
+    if 'device_manager' in st.session_state and st.session_state.device_connected and eeg_data is not None:
+        # 计算信噪比 (估计值)
+        from scipy import signal as sp_signal
+        # 去除低频趋势，保留高频噪声作为噪声估计
+        filtered_data = np.zeros_like(eeg_data)
+        for ch in range(eeg_data.shape[0]):
+            b, a = sp_signal.butter(4, 0.5/(sample_rate/2), 'highpass')
+            filtered_data[ch] = sp_signal.filtfilt(b, a, eeg_data[ch])
+        
+        signal_power = np.mean(np.var(eeg_data, axis=1))
+        noise_power = np.mean(np.var(filtered_data, axis=1))
+        snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else 0
+        
+        # 计算最大振幅
+        max_amp = np.max(np.abs(eeg_data)) * scale
+        
+        # 计算抗干扰值 (模拟值)
+        resistance = 85 + np.random.normal(0, 5)
+        
+        with quality_metrics[0]:
+            st.metric("信噪比", f"{snr:.1f} dB", delta=f"{np.random.normal(0, 1):.1f} dB")
+        
+        with quality_metrics[1]:
+            st.metric("抗干扰值", f"{resistance:.1f}%", delta=f"{np.random.normal(0, 3):.1f}%")
+        
+        with quality_metrics[2]:
+            st.metric("最大振幅", f"{max_amp:.1f} μV", delta=None)
+        
+        with quality_metrics[3]:
+            st.metric("采样率", f"{sample_rate} Hz", delta=None)
+        
+        with quality_metrics[4]:
+            # 模拟阻抗值
+            impedance = 10 + np.random.normal(0, 2)
+            st.metric("阻抗平均值", f"{impedance:.1f} kΩ", delta=f"{np.random.normal(0, 2):.1f} kΩ")
+    else:
+        # 使用模拟的信号质量指标
+        with quality_metrics[0]:
+            st.metric("信噪比", "24.5 dB", delta="1.2 dB")
+        
+        with quality_metrics[1]:
+            st.metric("抗干扰值", "86%", delta="3%")
+        
+        with quality_metrics[2]:
+            st.metric("最大振幅", f"{37.2*scale:.1f} μV", delta=None)
+        
+        with quality_metrics[3]:
+            st.metric("采样率", "250 Hz", delta=None)
+        
+        with quality_metrics[4]:
+            st.metric("阻抗平均值", "12.7 kΩ", delta="-2.1 kΩ")
     
     # 事件标记
     st.markdown("#### 事件标记")
@@ -214,17 +288,32 @@ def render_realtime_visualization():
     
     with col2:
         if st.button("添加标记", use_container_width=True):
-            st.success(f"已添加标记: '{event_label}' @ {datetime.now().strftime('%H:%M:%S')}")
+            # 初始化事件标记列表
+            if 'event_markers' not in st.session_state:
+                st.session_state.event_markers = []
+            
+            # 添加新的事件标记
+            if event_label:
+                new_marker = {
+                    "time": datetime.now().strftime('%H:%M:%S'),
+                    "label": event_label
+                }
+                st.session_state.event_markers.append(new_marker)
+                st.success(f"已添加标记: '{event_label}' @ {new_marker['time']}")
     
     # 显示已有标记
-    event_markers = [
-        {"time": "10:45:32", "label": "眼睛闭合"},
-        {"time": "10:45:55", "label": "眼睛睁开"},
-        {"time": "10:46:21", "label": "开始想象左手运动"},
-        {"time": "10:46:45", "label": "结束想象"}
-    ]
+    if 'event_markers' in st.session_state and st.session_state.event_markers:
+        markers_df = pd.DataFrame(st.session_state.event_markers)
+    else:
+        # 使用默认的示例标记
+        markers_df = pd.DataFrame([
+            {"time": "10:45:32", "label": "眼睛闭合"},
+            {"time": "10:45:55", "label": "眼睛睁开"},
+            {"time": "10:46:21", "label": "开始想象左手运动"},
+            {"time": "10:46:45", "label": "结束想象"}
+        ])
     
-    st.dataframe(pd.DataFrame(event_markers), use_container_width=True, height=150)
+    st.dataframe(markers_df, use_container_width=True, height=150)
 
 def render_spectral_visualization():
     """渲染频谱分析可视化"""
@@ -234,9 +323,14 @@ def render_spectral_visualization():
     col1, col2, col3 = st.columns(3)
     
     with col1:
+        # 获取通道数
+        num_channels = 8
+        if 'device_manager' in st.session_state:
+            num_channels = st.session_state.device_manager.channels
+            
         selected_channel = st.selectbox(
             "选择通道",
-            options=[f"通道 {i+1}" for i in range(8)],
+            options=[f"通道 {i+1}" for i in range(num_channels)],
             index=0
         )
     
@@ -259,6 +353,182 @@ def render_spectral_visualization():
     # 频谱图
     st.markdown("#### 功率谱密度")
     
+    # 获取真实数据并计算频谱
+    if 'device_manager' in st.session_state and st.session_state.device_connected:
+        # 获取设备管理器和采样率
+        device_manager = st.session_state.device_manager
+        sample_rate = device_manager.sample_rate
+        
+        # 获取至少2秒的数据用于频谱分析
+        num_samples = int(2 * sample_rate)
+        eeg_data = device_manager.get_latest_data(samples=num_samples)
+        
+        if eeg_data is not None and eeg_data.size > 0:
+            # 将通道索引转换为数字
+            channel_idx = int(selected_channel.split()[-1]) - 1
+            
+            # 限制通道索引在有效范围内
+            if channel_idx >= 0 and channel_idx < eeg_data.shape[0]:
+                # 获取所选通道的数据
+                channel_data = eeg_data[channel_idx]
+                
+                # 计算功率谱
+                from scipy import signal as sp_signal
+                
+                # 根据选择的窗口函数设置窗口
+                if fft_window == "汉宁窗":
+                    window = 'hann'
+                elif fft_window == "海明窗":
+                    window = 'hamming'
+                elif fft_window == "布莱克曼窗":
+                    window = 'blackman'
+                else:  # 矩形窗
+                    window = 'boxcar'
+                
+                # 计算功率谱密度
+                freqs, power = sp_signal.welch(channel_data, fs=sample_rate, nperseg=min(256, len(channel_data)), window=window)
+                
+                # 限制频率范围
+                mask = (freqs >= frequency_range[0]) & (freqs <= frequency_range[1])
+                freqs = freqs[mask]
+                power = power[mask]
+                
+                # 计算各频段功率
+                delta_mask = (freqs >= 0.5) & (freqs < 4)
+                theta_mask = (freqs >= 4) & (freqs < 8)
+                alpha_mask = (freqs >= 8) & (freqs < 13)
+                beta_mask = (freqs >= 13) & (freqs < 30)
+                gamma_mask = (freqs >= 30)
+                
+                delta_power = np.sum(power[delta_mask]) if np.any(delta_mask) else 0
+                theta_power = np.sum(power[theta_mask]) if np.any(theta_mask) else 0
+                alpha_power = np.sum(power[alpha_mask]) if np.any(alpha_mask) else 0
+                beta_power = np.sum(power[beta_mask]) if np.any(beta_mask) else 0
+                gamma_power = np.sum(power[gamma_mask]) if np.any(gamma_mask) else 0
+                
+                total_power = delta_power + theta_power + alpha_power + beta_power + gamma_power
+                
+                # 创建频谱图
+                fig = go.Figure()
+                
+                # 添加频带
+                if total_power > 0:
+                    # 计算各频段百分比
+                    delta_percent = delta_power / total_power * 100 if total_power > 0 else 0
+                    theta_percent = theta_power / total_power * 100 if total_power > 0 else 0
+                    alpha_percent = alpha_power / total_power * 100 if total_power > 0 else 0
+                    beta_percent = beta_power / total_power * 100 if total_power > 0 else 0
+                    gamma_percent = gamma_power / total_power * 100 if total_power > 0 else 0
+                    
+                    # 更新频带能量值
+                    delta_label = f"Delta ({delta_percent:.1f}%)"
+                    theta_label = f"Theta ({theta_percent:.1f}%)"
+                    alpha_label = f"Alpha ({alpha_percent:.1f}%)"
+                    beta_label = f"Beta ({beta_percent:.1f}%)"
+                    gamma_label = f"Gamma ({gamma_percent:.1f}%)"
+                    
+                    # 使用各频带的数据添加频带能量
+                    delta_freqs = freqs[delta_mask]
+                    delta_psd = power[delta_mask]
+                    if len(delta_freqs) > 0:
+                        fig.add_trace(go.Scatter(
+                            x=delta_freqs, y=delta_psd,
+                            mode='lines',
+                            fill='tozeroy',
+                            name=delta_label,
+                            line=dict(color='rgba(142,124,197,0.8)')
+                        ))
+                    
+                    theta_freqs = freqs[theta_mask]
+                    theta_psd = power[theta_mask]
+                    if len(theta_freqs) > 0:
+                        fig.add_trace(go.Scatter(
+                            x=theta_freqs, y=theta_psd,
+                            mode='lines',
+                            fill='tozeroy',
+                            name=theta_label,
+                            line=dict(color='rgba(76,175,80,0.8)')
+                        ))
+                    
+                    alpha_freqs = freqs[alpha_mask]
+                    alpha_psd = power[alpha_mask]
+                    if len(alpha_freqs) > 0:
+                        fig.add_trace(go.Scatter(
+                            x=alpha_freqs, y=alpha_psd,
+                            mode='lines',
+                            fill='tozeroy',
+                            name=alpha_label,
+                            line=dict(color='rgba(33,150,243,0.8)')
+                        ))
+                    
+                    beta_freqs = freqs[beta_mask]
+                    beta_psd = power[beta_mask]
+                    if len(beta_freqs) > 0:
+                        fig.add_trace(go.Scatter(
+                            x=beta_freqs, y=beta_psd,
+                            mode='lines',
+                            fill='tozeroy',
+                            name=beta_label,
+                            line=dict(color='rgba(255,152,0,0.8)')
+                        ))
+                    
+                    gamma_freqs = freqs[gamma_mask]
+                    gamma_psd = power[gamma_mask]
+                    if len(gamma_freqs) > 0:
+                        fig.add_trace(go.Scatter(
+                            x=gamma_freqs, y=gamma_psd,
+                            mode='lines',
+                            fill='tozeroy',
+                            name=gamma_label,
+                            line=dict(color='rgba(244,67,54,0.8)')
+                        ))
+                
+                # 添加总功率
+                fig.add_trace(go.Scatter(
+                    x=freqs, y=power,
+                    mode='lines',
+                    name='总功率',
+                    line=dict(color='black', width=2)
+                ))
+                
+                # 更新布局
+                fig.update_layout(
+                    height=400,
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    xaxis_title="频率 (Hz)",
+                    yaxis_title="功率 (μV²/Hz)",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 频带能量分布
+                col1, col2, col3, col4, col5 = st.columns(5)
+                
+                with col1:
+                    st.metric("Delta", f"{delta_percent:.1f}%")
+                
+                with col2:
+                    st.metric("Theta", f"{theta_percent:.1f}%")
+                
+                with col3:
+                    st.metric("Alpha", f"{alpha_percent:.1f}%")
+                
+                with col4:
+                    st.metric("Beta", f"{beta_percent:.1f}%")
+                
+                with col5:
+                    st.metric("Gamma", f"{gamma_percent:.1f}%")
+                
+                return
+    
+    # 如果没有数据或设备未连接，显示模拟数据
     # 生成频率数据
     freqs = np.linspace(0, 100, 1000)
     
@@ -332,13 +602,8 @@ def render_spectral_visualization():
     fig.update_layout(
         height=400,
         margin=dict(l=0, r=0, t=30, b=0),
-        xaxis=dict(
-            title="频率 (Hz)",
-            range=frequency_range
-        ),
-        yaxis=dict(
-            title="功率 (μV²/Hz)",
-        ),
+        xaxis_title="频率 (Hz)",
+        yaxis_title="功率 (μV²/Hz)",
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -350,94 +615,23 @@ def render_spectral_visualization():
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # 频带能量比例
-    st.markdown("#### 频带能量分布")
+    # 频带能量分布
+    col1, col2, col3, col4, col5 = st.columns(5)
     
-    # 计算各个频带的能量
-    bands = {
-        "Delta (0.5-4 Hz)": [0.5, 4, sum(delta_power)],
-        "Theta (4-8 Hz)": [4, 8, sum(theta_power)],
-        "Alpha (8-13 Hz)": [8, 13, sum(alpha_power)],
-        "Beta (13-30 Hz)": [13, 30, sum(beta_power)],
-        "Gamma (30-100 Hz)": [30, 100, sum(gamma_power)]
-    }
+    with col1:
+        st.metric("Delta", "32.4%")
     
-    # 计算总能量
-    total_energy = sum([band[2] for band in bands.values()])
+    with col2:
+        st.metric("Theta", "18.7%")
     
-    # 计算各频带百分比
-    percentages = {name: band[2] / total_energy * 100 for name, band in bands.items()}
+    with col3:
+        st.metric("Alpha", "28.5%")
     
-    # 创建饼图
-    labels = list(percentages.keys())
-    values = list(percentages.values())
+    with col4:
+        st.metric("Beta", "14.6%")
     
-    fig = go.Figure(data=[go.Pie(
-        labels=labels,
-        values=values,
-        hole=.3,
-        marker=dict(
-            colors=['rgba(142,124,197,0.8)', 'rgba(76,175,80,0.8)', 
-                    'rgba(33,150,243,0.8)', 'rgba(255,152,0,0.8)', 
-                    'rgba(244,67,54,0.8)']
-        )
-    )])
-    
-    fig.update_layout(
-        height=350,
-        margin=dict(l=0, r=0, t=30, b=0)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 时频图
-    st.markdown("#### 时频分析")
-    
-    # 创建时间和频率轴
-    time = np.linspace(0, 10, 100)
-    freq = np.linspace(1, 50, 50)
-    
-    # 创建时频数据矩阵
-    time_freq_data = np.zeros((len(freq), len(time)))
-    
-    # 添加随时间变化的频谱内容
-    for i, t in enumerate(time):
-        # 低频常规活动
-        time_freq_data[0:5, i] = 10 + 2 * np.sin(t)
-        
-        # alpha波段(8-13Hz)在5-7秒增强
-        if 5 < t < 7:
-            alpha_band = np.where((freq >= 8) & (freq <= 13))[0]
-            time_freq_data[alpha_band, i] = 15 * np.exp(-((t - 6) ** 2) / 0.5)
-        
-        # 高频活动在时间3秒附近出现
-        if 2.8 < t < 3.2:
-            beta_band = np.where((freq >= 13) & (freq <= 30))[0]
-            time_freq_data[beta_band, i] = 10 * np.exp(-((t - 3) ** 2) / 0.05)
-    
-    # 添加一些随机变化
-    time_freq_data += np.random.normal(0, 0.5, time_freq_data.shape)
-    
-    # 确保所有值都是非负的
-    time_freq_data = np.maximum(time_freq_data, 0)
-    
-    # 创建热图
-    fig = go.Figure(data=go.Heatmap(
-        z=time_freq_data,
-        x=time,
-        y=freq,
-        colorscale='Jet',
-        colorbar=dict(title="功率")
-    ))
-    
-    fig.update_layout(
-        height=350,
-        margin=dict(l=0, r=0, t=30, b=0),
-        xaxis=dict(title="时间 (秒)"),
-        yaxis=dict(title="频率 (Hz)")
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    with col5:
+        st.metric("Gamma", "5.8%")
 
 def render_topographic_visualization():
     """渲染脑地形图可视化"""

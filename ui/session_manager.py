@@ -24,7 +24,11 @@ class SessionManager:
                 "device_type": None,
                 "channel_count": 0,
                 "sample_rate": 0,
-                "notes": ""
+                "notes": "",
+                "username": "默认用户",
+                "institution": "研究机构",
+                "session_name": f"会话_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "remarks": ""
             },
             "configuration": {},
             "events": [],
@@ -277,3 +281,32 @@ class SessionManager:
     def get_session_note(self):
         """获取会话备注"""
         return self.session_data["metadata"]["notes"]
+    
+    def set_user_info(self, username=None, institution=None, session_name=None, remarks=None):
+        """
+        设置用户信息
+        
+        Args:
+            username: 用户名
+            institution: 机构名称
+            session_name: 会话名称
+            remarks: 备注信息
+        """
+        if username:
+            self.session_data["metadata"]["username"] = username
+        if institution:
+            self.session_data["metadata"]["institution"] = institution
+        if session_name:
+            self.session_data["metadata"]["session_name"] = session_name
+        if remarks:
+            self.session_data["metadata"]["remarks"] = remarks
+        return True
+
+    def get_user_info(self):
+        """获取用户信息"""
+        return {
+            "username": self.session_data["metadata"]["username"],
+            "institution": self.session_data["metadata"]["institution"],
+            "session_name": self.session_data["metadata"]["session_name"],
+            "remarks": self.session_data["metadata"]["remarks"]
+        }
